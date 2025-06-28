@@ -53,7 +53,7 @@ def run_init_db():
         track_id TEXT,
         played_at TIMESTAMP,
         user_id INTEGER REFERENCES users(id),
-        UNIQUE(track_id, played_at)
+        UNIQUE (track_id, played_at, user_id)
     );
     """)
 
