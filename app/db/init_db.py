@@ -1,6 +1,7 @@
 import os
 import psycopg2
 from utils.db_utils import get_db_connection
+from utils.logger import log_event
 
 def run_init_db():
     # Connect to PostgreSQL
@@ -25,6 +26,7 @@ def run_init_db():
         user_id INTEGER REFERENCES users(id)
     );
     """)
+    log_event("init_db", "Checked or created: albums table.")
 
     # ─────────────────────────────────────────────
     # Tracks table (UPDATED — is_liked removed)
@@ -43,6 +45,7 @@ def run_init_db():
         user_id INTEGER REFERENCES users(id)
     );
     """)
+    log_event("init_db", "Checked or created: tracks table.")
 
     # ─────────────────────────────────────────────
     # Plays table
@@ -56,11 +59,13 @@ def run_init_db():
         UNIQUE (track_id, played_at, user_id)
     );
     """)
+    log_event("init_db", "Checked or created: plays table.")
 
     # Explicitly create a named unique index
     cur.execute("""
     CREATE UNIQUE INDEX IF NOT EXISTS idx_plays_unique ON plays (track_id, played_at, user_id);
     """)
+    log_event("init_db", "Checked or created: unique index on plays table.")
 
     # ─────────────────────────────────────────────
     # Playlist mapping table
@@ -77,6 +82,7 @@ def run_init_db():
         user_id INTEGER REFERENCES users(id)
     );
     """)
+    log_event("init_db", "Checked or created: playlist_mappings table.")
 
     # ─────────────────────────────────────────────
     # Track availability table
@@ -89,6 +95,7 @@ def run_init_db():
         user_id INTEGER REFERENCES users(id)
     );
     """)
+    log_event("init_db", "Checked or created: track_availability table.")
 
     # ─────────────────────────────────────────────
     # Liked tracks table
@@ -106,6 +113,7 @@ def run_init_db():
         user_id INTEGER REFERENCES users(id)
     );
     """)
+    log_event("init_db", "Checked or created: liked_tracks table.")
 
     # ─────────────────────────────────────────────
     # Excluded tracks table
@@ -116,6 +124,7 @@ def run_init_db():
         user_id INTEGER REFERENCES users(id)
     );
     """)
+    log_event("init_db", "Checked or created: excluded_tracks table.")
 
 
     # ─────────────────────────────────────────────
@@ -132,6 +141,7 @@ def run_init_db():
         user_id INTEGER REFERENCES users(id)
     );
     """)
+    log_event("init_db", "Checked or created: logs table.")
 
     # ─────────────────────────────────────────────
     # Canonical album matches table
@@ -146,6 +156,7 @@ def run_init_db():
         match_status TEXT NOT NULL
     );
     """)
+    log_event("init_db", "Checked or created: canonical_album_matches table.")
 
     # ─────────────────────────────────────────────
     # Users table (multi-user support)
@@ -160,12 +171,15 @@ def run_init_db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
+    log_event("init_db", "Checked or created: users table.")
 
+    log_event("init_db", "✅ Tables created and updated successfully.")
     conn.commit()
     cur.close()
     conn.close()
 
     print("✅ Tables created and updated successfully.")
+    log_event("init_db", "✅ init_db script run completed.")
 
 if __name__ == "__main__":
     run_init_db()

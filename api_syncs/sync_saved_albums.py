@@ -13,7 +13,7 @@ import datetime
 # ─────────────────────────────────────────────
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.logger import log_event
-from utils.spotify_auth import get_spotify_client
+from utils.spotify_auth import get_spotify_client, get_spotify_client_for_user
 
 # ─────────────────────────────────────────────
 # Safe Spotify API Wrapper
@@ -34,88 +34,90 @@ def safe_spotify_call(func, *args, **kwargs):
                 raise
 
 # ─────────────────────────────────────────────
-# Setup Spotify + DB connections
+# Setup DB connection
 # ─────────────────────────────────────────────
-sp = get_spotify_client()
-
 from utils.db_utils import get_db_connection
 
 conn = get_db_connection()
 
 cur = conn.cursor()
 
-limit = 20
-offset = 0
-current_album_ids = set()
+cur.execute("SELECT id FROM users WHERE spotify_refresh_token IS NOT NULL")
+user_ids = [row[0] for row in cur.fetchall()]
 
-log_event("sync_saved_albums", "Starting saved albums sync")
+for user_id in user_ids:
+    try:
+        sp = get_spotify_client_for_user(user_id)
 
-# ─────────────────────────────────────────────
-# Sync saved albums from Spotify
-# ─────────────────────────────────────────────
-while True:
-    results = safe_spotify_call(sp.current_user_saved_albums, limit=limit, offset=offset)
-    items = results['items']
-    if not items:
-        break
+        limit = 50
+        offset = 0
+        current_album_ids = set()
 
-    for item in items:
-        album = item['album']
-        album_id = album['id']
-        current_album_ids.add(album_id)
-        added_at = item.get('added_at')
+        log_event("sync_saved_albums", f"User {user_id}: Starting saved albums sync")
+
+        while True:
+            results = safe_spotify_call(sp.current_user_saved_albums, limit=limit, offset=offset)
+            items = results['items']
+            if not items:
+                break
+
+            for item in items:
+                album = item['album']
+                album_id = album['id']
+                current_album_ids.add(album_id)
+                added_at = item.get('added_at')
+
+                cur.execute("""
+                    INSERT INTO albums (id, name, artist, artist_id, release_date, total_tracks, is_saved, added_at, tracks_synced)
+                    VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, FALSE)
+                    ON CONFLICT (id) DO UPDATE
+                    SET is_saved = TRUE, added_at = EXCLUDED.added_at, artist_id = EXCLUDED.artist_id;
+                """, (
+                    album_id,
+                    album['name'],
+                    album['artists'][0]['name'],
+                    album['artists'][0]['id'],
+                    album.get('release_date'),
+                    album.get('total_tracks'),
+                    added_at
+                ))
+
+            offset += len(items)
+            if len(items) < limit:
+                break
+
+        log_event("sync_saved_albums", f"User {user_id}: {len(current_album_ids)} saved albums synced")
 
         cur.execute("""
-            INSERT INTO albums (id, name, artist, artist_id, release_date, total_tracks, is_saved, added_at, tracks_synced)
-            VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, FALSE)
-            ON CONFLICT (id) DO UPDATE
-            SET is_saved = TRUE, added_at = EXCLUDED.added_at, artist_id = EXCLUDED.artist_id;
-        """, (
-            album_id,
-            album['name'],
-            album['artists'][0]['name'],
-            album['artists'][0]['id'],
-            album.get('release_date'),
-            album.get('total_tracks'),
-            added_at
-        ))
+            UPDATE albums 
+            SET is_saved = FALSE, tracks_synced = FALSE 
+            WHERE id NOT IN %s
+        """, (tuple(current_album_ids),))
 
-    offset += len(items)
-    if len(items) < limit:
-        break
+        log_event("sync_saved_albums", f"User {user_id}: Cleaning up removed albums with no valid tracks")
+        cur.execute("""
+            SELECT id FROM albums
+            WHERE is_saved = FALSE
+              AND id NOT IN (SELECT DISTINCT album_id FROM tracks WHERE from_album = TRUE)
+        """)
+        albums_to_remove = cur.fetchall()
 
-log_event("sync_saved_albums", f"{len(current_album_ids)} saved albums synced")
+        for (album_id,) in albums_to_remove:
+            log_event("sync_saved_albums", f"User {user_id}: Removing album and orphaned tracks: {album_id}")
+            cur.execute("""
+                DELETE FROM tracks
+                WHERE album_id = %s AND from_album = TRUE
+            """, (album_id,))
+            cur.execute("""
+                DELETE FROM albums
+                WHERE id = %s
+            """, (album_id,))
 
-# ─────────────────────────────────────────────
-# Mark removed albums & cleanup
-# ─────────────────────────────────────────────
-cur.execute("""
-    UPDATE albums 
-    SET is_saved = FALSE, tracks_synced = FALSE 
-    WHERE id NOT IN %s
-""", (tuple(current_album_ids),))
+        conn.commit()
+        log_event("sync_saved_albums", f"User {user_id}: Saved albums sync complete")
 
-log_event("sync_saved_albums", "Cleaning up removed albums with no valid tracks")
-cur.execute("""
-    SELECT id FROM albums
-    WHERE is_saved = FALSE
-      AND id NOT IN (SELECT DISTINCT album_id FROM tracks WHERE from_album = TRUE)
-""")
-albums_to_remove = cur.fetchall()
+    except Exception as e:
+        log_event("sync_saved_albums", f"❌ User {user_id} failed: {e}", level="error")
 
-for (album_id,) in albums_to_remove:
-    log_event("sync_saved_albums", f"Removing album and orphaned tracks: {album_id}")
-    cur.execute("""
-        DELETE FROM tracks
-        WHERE album_id = %s AND from_album = TRUE
-    """, (album_id,))
-    cur.execute("""
-        DELETE FROM albums
-        WHERE id = %s
-    """, (album_id,))
-
-conn.commit()
 cur.close()
 conn.close()
-
-log_event("sync_saved_albums", "Saved albums sync complete")
