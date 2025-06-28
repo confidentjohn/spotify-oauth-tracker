@@ -16,13 +16,26 @@ from routes import playlist_dashboard
 from utils.db_utils import get_db_connection
 
 # ─────────────────────────────────────────────────────
-# Retrieve a fresh Spotify access token using the refresh token
-def get_access_token():
+# Retrieve a fresh Spotify access token for a user using the refresh token from the database
+def get_access_token_for_user(user_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    cur.execute("SELECT refresh_token FROM users WHERE id = %s", (user_id,))
+    result = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not result:
+        raise Exception(f"No refresh token found for user ID: {user_id}")
+
+    refresh_token = result[0]
+
     token_response = requests.post(
         "https://accounts.spotify.com/api/token",
         data={
             "grant_type": "refresh_token",
-            "refresh_token": os.environ["SPOTIFY_REFRESH_TOKEN"],
+            "refresh_token": refresh_token,
             "client_id": os.environ["SPOTIFY_CLIENT_ID"],
             "client_secret": os.environ["SPOTIFY_CLIENT_SECRET"],
         }
@@ -58,7 +71,7 @@ class User(UserMixin):
 def load_user(user_id):
     return User(user_id)
 
-sp = Spotify(auth=get_access_token())
+# sp = Spotify(auth=get_access_token_for_user(user_id))  # Example usage
 
 # ─────────────────────────────────────────────────────
 from utils.auth import check_auth
