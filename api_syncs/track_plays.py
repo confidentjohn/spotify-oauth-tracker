@@ -38,8 +38,14 @@ def safe_spotify_call(func, *args, **kwargs):
 # ─────────────────────────────────────────────
 # Setup Spotify client
 # ─────────────────────────────────────────────
-from utils.spotify_auth import get_spotify_client
-sp = get_spotify_client()
+from utils.spotify_auth import get_spotify_client_for_user
+
+from utils.db_utils import get_user_ids
+user_ids = get_user_ids()
+
+if not user_ids:
+    log_event("track_plays", "❌ No users found in database", level="error")
+    sys.exit(1)
 
 # ─────────────────────────────────────────────
 # Connect to PostgreSQL
@@ -49,35 +55,36 @@ from utils.db_utils import get_db_connection
 conn = get_db_connection()
 cur = conn.cursor()
 
-# ─────────────────────────────────────────────
-# Sync recently played tracks
-# ─────────────────────────────────────────────
-log_event("track_plays", "Tracking recently played tracks")
-results = safe_spotify_call(sp.current_user_recently_played, limit=50)
-recent_plays = results["items"]
+for user_id in user_ids:
+    log_event("track_plays", f"Processing recently played for user: {user_id}")
+    sp = get_spotify_client_for_user(user_id)
 
-new_count = 0
-for item in recent_plays:
-    track = item["track"]
-    track_id = track["id"]
-    played_at = item["played_at"]
-    from dateutil import parser
-    played_at_dt = parser.isoparse(played_at)
+    log_event("track_plays", "Tracking recently played tracks")
+    results = safe_spotify_call(sp.current_user_recently_played, limit=50)
+    recent_plays = results["items"]
 
-    cur.execute("SELECT 1 FROM plays WHERE track_id = %s AND played_at = %s", (track_id, played_at_dt))
-    if cur.fetchone():
-        continue
+    new_count = 0
+    for item in recent_plays:
+        track = item["track"]
+        track_id = track["id"]
+        played_at = item["played_at"]
+        from dateutil import parser
+        played_at_dt = parser.isoparse(played_at)
 
-    cur.execute("""
-        INSERT INTO plays (track_id, played_at)
-        VALUES (%s, %s)
-        ON CONFLICT (track_id, played_at) DO NOTHING;
-    """, (track_id, played_at_dt))
-    new_count += 1
-    time.sleep(0.1)  # optional light throttle
+        cur.execute("SELECT 1 FROM plays WHERE track_id = %s AND played_at = %s AND user_id = %s", (track_id, played_at_dt, user_id))
+        if cur.fetchone():
+            continue
+
+        cur.execute("""
+            INSERT INTO plays (track_id, played_at, user_id)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (track_id, played_at, user_id) DO NOTHING;
+        """, (track_id, played_at_dt, user_id))
+        new_count += 1
+        time.sleep(0.1)  # optional light throttle
+
+    log_event("track_plays", f"Tracked recent plays for {user_id}. New entries: {new_count}")
 
 conn.commit()
 cur.close()
 conn.close()
-
-log_event("track_plays", f"Tracked recent plays. New entries: {new_count}")
