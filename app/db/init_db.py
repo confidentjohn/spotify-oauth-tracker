@@ -59,7 +59,7 @@ def run_init_db():
 
     # Explicitly create a named unique index
     cur.execute("""
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_plays_unique ON plays (track_id, played_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_plays_unique ON plays (track_id, played_at, user_id);
     """)
 
     # ─────────────────────────────────────────────
