@@ -21,7 +21,7 @@ def get_access_token_for_user(user_id):
     conn = get_db_connection()
     cur = conn.cursor()
     
-    cur.execute("SELECT refresh_token FROM users WHERE id = %s", (user_id,))
+    cur.execute("SELECT spotify_refresh_token FROM users WHERE id = %s", (user_id,))
     result = cur.fetchone()
     cur.close()
     conn.close()
