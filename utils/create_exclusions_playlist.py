@@ -6,11 +6,11 @@ from utils.logger import log_event
 from utils.spotify_auth import get_spotify_client
 from utils.db_utils import get_db_connection
 
-def ensure_exclusions_playlist(sp):
+def ensure_exclusions_playlist(sp, user_id):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT playlist_id FROM playlist_mappings WHERE slug = 'exclusions'")
+        cur.execute("SELECT playlist_id FROM playlist_mappings WHERE slug = 'exclusions' AND user_id = %s", (user_id,))
         result = cur.fetchone()
 
         if result:
@@ -22,9 +22,10 @@ def ensure_exclusions_playlist(sp):
         playlist_url = playlist["external_urls"]["spotify"]
 
         cur.execute("""
-            INSERT INTO playlist_mappings (slug, name, playlist_id, status, rules, track_count, last_synced_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO playlist_mappings (user_id, slug, name, playlist_id, status, rules, track_count, last_synced_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, (
+            user_id,
             "exclusions",
             "Exclusions",
             playlist_url,
