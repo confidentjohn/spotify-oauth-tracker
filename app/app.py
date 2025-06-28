@@ -65,7 +65,7 @@ def require_login_for_all_routes():
 
 class User(UserMixin):
     def __init__(self, id):
-        self.id = id
+        self.id = int(id)  # ensure it's stored as an integer
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -105,9 +105,18 @@ def login():
         username = request.form["username"]
         password = request.form["password"]
         if validate_user(username, password):
-            user = User(username)
-            login_user(user)
-            return redirect(url_for("home"))
+            # Fetch the user's ID from the database
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM users WHERE username = %s", (username,))
+            result = cur.fetchone()
+            cur.close()
+            conn.close()
+
+            if result:
+                user = User(result[0])  # pass the numeric ID
+                login_user(user)
+                return redirect(url_for("home"))
         flash("Invalid credentials", "error")
     return render_template("login.html")
 
