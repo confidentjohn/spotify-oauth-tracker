@@ -212,6 +212,18 @@ def logout():
     logout_user()
     return redirect(url_for("login"))
 
+@app.route("/test-token")
+@login_required
+def test_token():
+    try:
+        user_id = current_user.id
+        token = get_access_token_for_user(user_id)
+        sp = Spotify(auth=token)
+        profile = sp.current_user()
+        return f"<pre>✅ Token worked! Logged in as: {profile['display_name']} ({profile['id']})</pre>"
+    except Exception as e:
+        return f"<pre>❌ Token failed: {str(e)}</pre>"
+
 # ─────────────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
