@@ -2,6 +2,7 @@ import os
 import requests
 from spotipy import Spotify
 from utils.db_utils import get_db_connection
+from utils.logger import log_event
 
 def get_access_token_for_user(user_id):
     conn = get_db_connection()
@@ -30,6 +31,7 @@ def get_access_token_for_user(user_id):
 
 def get_spotify_client_for_user(user_id):
     token = get_access_token_for_user(user_id)
+    log_event("auth", f"Using DB-based Spotify auth for user {user_id}")
     return Spotify(auth=token)
 
 def get_spotify_client():
@@ -43,4 +45,5 @@ def get_spotify_client():
         }
     )
     token_response.raise_for_status()
+    log_event("auth", "Using environment-based Spotify auth")
     return Spotify(auth=token_response.json()["access_token"])
