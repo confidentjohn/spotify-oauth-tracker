@@ -14,7 +14,7 @@ def run_init_db():
     # ─────────────────────────────────────────────
     cur.execute("""
     CREATE TABLE IF NOT EXISTS albums (
-        id TEXT PRIMARY KEY,
+        id TEXT,
         name TEXT,
         artist TEXT,
         artist_id TEXT,
@@ -23,7 +23,8 @@ def run_init_db():
         is_saved BOOLEAN DEFAULT TRUE,
         added_at TIMESTAMP,
         tracks_synced BOOLEAN DEFAULT FALSE,
-        user_id INTEGER REFERENCES users(id)
+        user_id INTEGER REFERENCES users(id),
+        PRIMARY KEY (id, user_id)
     );
     """)
     log_event("init_db", "Checked or created: albums table.")

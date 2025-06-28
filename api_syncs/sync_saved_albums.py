@@ -68,9 +68,9 @@ for user_id in user_ids:
                 added_at = item.get('added_at')
 
                 cur.execute("""
-                    INSERT INTO albums (id, name, artist, artist_id, release_date, total_tracks, is_saved, added_at, tracks_synced)
-                    VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, FALSE)
-                    ON CONFLICT (id) DO UPDATE
+                    INSERT INTO albums (id, name, artist, artist_id, release_date, total_tracks, is_saved, added_at, tracks_synced, user_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, FALSE, %s)
+                    ON CONFLICT (id, user_id) DO UPDATE
                     SET is_saved = TRUE, added_at = EXCLUDED.added_at, artist_id = EXCLUDED.artist_id;
                 """, (
                     album_id,
@@ -79,7 +79,8 @@ for user_id in user_ids:
                     album['artists'][0]['id'],
                     album.get('release_date'),
                     album.get('total_tracks'),
-                    added_at
+                    added_at,
+                    user_id
                 ))
 
             offset += len(items)
@@ -91,27 +92,28 @@ for user_id in user_ids:
         cur.execute("""
             UPDATE albums 
             SET is_saved = FALSE, tracks_synced = FALSE 
-            WHERE id NOT IN %s
-        """, (tuple(current_album_ids),))
+            WHERE id NOT IN %s AND user_id = %s
+        """, (tuple(current_album_ids), user_id))
 
         log_event("sync_saved_albums", f"User {user_id}: Cleaning up removed albums with no valid tracks")
         cur.execute("""
             SELECT id FROM albums
             WHERE is_saved = FALSE
-              AND id NOT IN (SELECT DISTINCT album_id FROM tracks WHERE from_album = TRUE)
-        """)
+              AND user_id = %s
+              AND id NOT IN (SELECT DISTINCT album_id FROM tracks WHERE from_album = TRUE AND user_id = %s)
+        """, (user_id, user_id))
         albums_to_remove = cur.fetchall()
 
         for (album_id,) in albums_to_remove:
             log_event("sync_saved_albums", f"User {user_id}: Removing album and orphaned tracks: {album_id}")
             cur.execute("""
                 DELETE FROM tracks
-                WHERE album_id = %s AND from_album = TRUE
-            """, (album_id,))
+                WHERE album_id = %s AND from_album = TRUE AND user_id = %s
+            """, (album_id, user_id))
             cur.execute("""
                 DELETE FROM albums
-                WHERE id = %s
-            """, (album_id,))
+                WHERE id = %s AND user_id = %s
+            """, (album_id, user_id))
 
         conn.commit()
         log_event("sync_saved_albums", f"User {user_id}: Saved albums sync complete")
