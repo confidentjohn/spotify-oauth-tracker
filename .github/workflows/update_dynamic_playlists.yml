@@ -1,8 +1,9 @@
 name: Update Smart Playlists
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
   workflow_call:
+    inputs: {}
     secrets:
       SPOTIFY_CLIENT_ID:
         required: true
